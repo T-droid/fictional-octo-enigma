@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -126,6 +127,30 @@ selected_columns = [
     'min_seg_size_forward', 'Active Mean', 'Active Std', 'Active Max', 'Idle Std'
 ]
 
+vulnarability_mapping = {
+    '0': 'Benign',
+    '1': 'Bot',
+    '2': 'DoS Hulk',
+    '3': 'DoS GoldenEye',
+    '4': 'DoS slowloris',
+    '5': 'DoS Slowhttptest',
+    '6': 'DoS Slowloris',
+    '7': 'DoS Slowhttptest',
+    '8': 'DoS Hulk',
+    '9': 'DoS Slowhttptest',
+    '10': 'DoS Slowhttptest',
+    '11': 'DoS Slowhttptest',
+    '12': 'DoS Slowhttptest',
+    '13': 'DoS Slowhttptest',
+    '14': 'DoS Slowhttptest',
+    '15': 'DoS Slowhttptest',
+    '16': 'DoS Slowhttptest',
+    '17': 'DoS Slowhttptest',
+    '18': 'DoS Slowhttptest',
+    '19': 'DoS Slowhttptest',
+    '20': 'DoS Slowhttptest',
+}
+
 
 def process_csv(file: UploadFile):
     try:
@@ -154,13 +179,18 @@ def process_csv(file: UploadFile):
         with torch.no_grad():
             outputs = model(data_tensor)
             _, predictions = torch.max(outputs, dim=1)
-
+            predictions = predictions.tolist()
         # Add predictions to the DataFrame
-        data["Predictions"] = ["Benign" if pred == 0 else "Intrusion" for pred in predictions]
+        data["predictions"] = [vulnarability_mapping[str(pred)] for pred in predictions]
 
         # Convert result to JSON
-        return data.to_dict(orient="records")
+        # In process_csv function, modify the final part to:
+        predictions_with_index = [{"row": idx, "prediction": pred} for idx, pred in enumerate(data["predictions"].tolist())]
+        print(predictions_with_index),
+        return predictions_with_index
+
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
 
@@ -178,5 +208,6 @@ async def upload_csv(file: UploadFile = File(...)):
 @app.get("/")
 async def root():
     return {"message": "Welcome to the NIDS API!"}
-
-
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

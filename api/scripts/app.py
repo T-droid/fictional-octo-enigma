@@ -7,16 +7,48 @@ import torch
 import torch.nn as nn
 import io
 import os
+from fastapi import WebSocket, WebSocketDisconnect
+import asyncio
 
 #model class
 class NDISModel(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(NDISModel, self).__init__()
-        self.fc = nn.Linear(input_dim, output_dim)
+        self.fc1 = nn.Linear(input_dim, 512)  
+        self.fc2 = nn.Linear(512, 256)       
+        self.fc3 = nn.Linear(256, 128)       
+        self.fc4 = nn.Linear(128, output_dim)
+        self.dropout = nn.Dropout(0.5)
+        self.relu = nn.ReLU()
+
 
     def forward(self, x):
-        return self.fc(x)
+        x = self.relu(self.fc1(x))  
+        x = self.dropout(x)         
+        x = self.relu(self.fc2(x))  
+        x = self.dropout(x)         
+        x = self.relu(self.fc3(x))  
+        x = self.fc4(x)             
+        return x
+    
+# Web socket connection management
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
 
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    async def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            await connection.send_json(message)
+
+manager = ConnectionManager()
+       
 
 app = FastAPI()
 
@@ -35,10 +67,9 @@ model_path = os.path.join(os.path.dirname(__file__), "..", "model", "NIDS_Model_
 if not os.path.exists(model_path):
     raise FileNotFoundError(f"Model file not found at {model_path}")
 input_dim = 47  
-output_dim = 2
+output_dim = 15  #changed from 2 to 15 classes
 model = NDISModel(input_dim=input_dim, output_dim=output_dim)
 torch.save(model.state_dict(), model_path)
-model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"), weights_only=True))
 
 model.eval()
 
@@ -132,23 +163,17 @@ vulnarability_mapping = {
     '1': 'Bot',
     '2': 'DoS Hulk',
     '3': 'DoS GoldenEye',
-    '4': 'DoS slowloris',
+    '4': 'DoS Hulk',
     '5': 'DoS Slowhttptest',
     '6': 'DoS Slowloris',
-    '7': 'DoS Slowhttptest',
-    '8': 'DoS Hulk',
-    '9': 'DoS Slowhttptest',
-    '10': 'DoS Slowhttptest',
-    '11': 'DoS Slowhttptest',
-    '12': 'DoS Slowhttptest',
-    '13': 'DoS Slowhttptest',
-    '14': 'DoS Slowhttptest',
-    '15': 'DoS Slowhttptest',
-    '16': 'DoS Slowhttptest',
-    '17': 'DoS Slowhttptest',
-    '18': 'DoS Slowhttptest',
-    '19': 'DoS Slowhttptest',
-    '20': 'DoS Slowhttptest',
+    '7': 'FTP-Patator',
+    '8': 'Heartbleed',
+    '9': 'infiltration',
+    '10': 'PortScan',
+    '11': 'SSH-Patator',
+    '12': 'Web Attack Brute Force',
+    '13': 'Web Attack Sql Injection',
+    '14': 'Web Attack XSS'
 }
 
 
@@ -172,7 +197,7 @@ def process_csv(file: UploadFile):
         # Select required columns
         data = data[selected_columns]
 
-        # Convert to PyTorch tensor
+        # Convert to PyTorch tensor] Operation not permitted
         data_tensor = torch.tensor(data.values, dtype=torch.float32)
 
         # Make predictions
@@ -192,7 +217,165 @@ def process_csv(file: UploadFile):
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+    
+import scapy.all as scapy
+import numpy as np
+import time
+from collections import defaultdict
 
+# Track flow data
+flows = defaultdict(dict)
+
+# List of selected columns/features required for the model
+selected_columns = [
+    'Destination Port', 'Flow Duration', 'Total Fwd Packets', 'Total Length of Fwd Packets',
+    'Fwd Packet Length Max', 'Fwd Packet Length Min', 'Fwd Packet Length Mean', 'Bwd Packet Length Max',
+    'Bwd Packet Length Min', 'Flow Bytes/s', 'Flow Packets/s', 'Flow IAT Mean', 'Flow IAT Std',
+    'Flow IAT Min', 'Fwd IAT Min', 'Bwd IAT Total', 'Bwd IAT Mean', 'Bwd IAT Std', 'Bwd IAT Max',
+    'Fwd PSH Flags', 'Bwd PSH Flags', 'Fwd URG Flags', 'Bwd URG Flags', 'Fwd Header Length',
+    'Bwd Header Length', 'Bwd Packets/s', 'Min Packet Length', 'FIN Flag Count', 'RST Flag Count',
+    'PSH Flag Count', 'ACK Flag Count', 'URG Flag Count', 'Down/Up Ratio', 'Fwd Avg Bytes/Bulk',
+    'Fwd Avg Packets/Bulk', 'Fwd Avg Bulk Rate', 'Bwd Avg Bytes/Bulk', 'Bwd Avg Packets/Bulk',
+    'Bwd Avg Bulk Rate', 'Init_Win_bytes_forward', 'Init_Win_bytes_backward', 'act_data_pkt_fwd',
+    'min_seg_size_forward', 'Active Mean', 'Active Std', 'Active Max', 'Idle Std'
+]
+
+# Feature extraction for a given packet
+def extract_packet_features(packet, flow_key):
+    flow = flows[flow_key]
+    
+    if packet.haslayer(scapy.IP):
+        ip_src = packet[scapy.IP].src
+        ip_dst = packet[scapy.IP].dst
+        proto = packet[scapy.IP].proto
+        destination_port = packet.sport if proto == 6 else (packet.dport if proto == 17 else 0)  # Capture destination port for TCP/UDP
+        
+        # Initialize flow if it's the first packet
+        if 'start_time' not in flow:
+            flow['start_time'] = time.time()
+        flow['last_time'] = time.time()
+
+        # Track total packets and bytes
+        flow['total_packets'] = flow.get('total_packets', 0) + 1
+        flow['total_bytes'] = flow.get('total_bytes', 0) + len(packet)
+
+        # Extract flags (FIN, RST, PSH, ACK, URG) if it's a TCP packet
+        if packet.haslayer(scapy.TCP):
+            flags = packet[scapy.TCP].flags
+            flow['FIN'] = flow.get('FIN', 0) + (1 if 'F' in flags else 0)
+            flow['RST'] = flow.get('RST', 0) + (1 if 'R' in flags else 0)
+            flow['PSH'] = flow.get('PSH', 0) + (1 if 'P' in flags else 0)
+            flow['ACK'] = flow.get('ACK', 0) + (1 if 'A' in flags else 0)
+            flow['URG'] = flow.get('URG', 0) + (1 if 'U' in flags else 0)
+        
+        # Compute Flow Duration (time difference between first and last packet)
+        flow['duration'] = flow['last_time'] - flow['start_time']
+        
+        # Calculate Inter-packet Time (IAT)
+        flow['iat'] = flow.get('iat', []) + [time.time() - flow['last_time']]
+        
+        # Min/Max Packet Length
+        flow['min_packet_len'] = min(flow.get('min_packet_len', float('inf')), len(packet))
+        flow['max_packet_len'] = max(flow.get('max_packet_len', 0), len(packet))
+        
+        # Calculate Flow Bytes/s and Flow Packets/s
+        flow['flow_bytes_per_s'] = flow['total_bytes'] / flow['duration'] if flow['duration'] > 0 else 0
+        flow['flow_packets_per_s'] = flow['total_packets'] / flow['duration'] if flow['duration'] > 0 else 0
+        
+        # Calculate Forward and Backward IAT Mean/Std/Min
+        if 'fwd_iat' not in flow:
+            flow['fwd_iat'] = []
+        if 'bwd_iat' not in flow:
+            flow['bwd_iat'] = []
+        
+        # Separate Forward and Backward Packets (can be done based on direction, src -> dst is fwd, dst -> src is bwd)
+        if packet[scapy.IP].src == ip_src:
+            flow['fwd_iat'].append(time.time() - flow['last_time'])
+        else:
+            flow['bwd_iat'].append(time.time() - flow['last_time'])
+        
+        # Return extracted features (after processing the packet)
+        return flow
+    return None
+
+# Function to calculate safe statistics from lists
+def safe_statistic(lst, stat_type):
+    if len(lst) > 0:
+        if stat_type == 'mean':
+            return np.mean(lst)
+        elif stat_type == 'std':
+            return np.std(lst)
+        elif stat_type == 'min':
+            return np.min(lst)
+        elif stat_type == 'max':
+            return np.max(lst)
+    return 0  # Default to 0 if list is empty
+
+# Function to capture packets and extract features
+async def capture_traffic_and_extract_features():
+    def packet_callback(packet):
+        if packet.haslayer(scapy.TCP):
+            if packet[scapy.TCP].flags == "F":
+                return 
+            
+            ip_src = packet[scapy.IP].src
+            ip_dst = packet[scapy.IP].dst
+            flow_key = (ip_src, ip_dst)
+
+            extract_packet_features(packet, flow_key)
+            flow = flows[flow_key]
+
+            features = [
+                flow.get('destination_port', 0),
+                flow['duration'], flow['total_packets'], flow['total_bytes'],
+                flow.get('fwd_packet_len_max', 0), flow.get('fwd_packet_len_min', 0),
+                safe_statistic(flow.get('fwd_iat', []), 'mean'),
+                safe_statistic(flow.get('fwd_iat', []), 'std'),
+                safe_statistic(flow.get('fwd_iat', []), 'min'),
+                safe_statistic(flow.get('bwd_iat', []), 'min'),
+                safe_statistic(flow.get('bwd_iat', []), 'sum'),
+                safe_statistic(flow.get('bwd_iat', []), 'mean'),
+                safe_statistic(flow.get('bwd_iat', []), 'std'),
+                safe_statistic(flow.get('bwd_iat', []), 'max'),
+                flow['FIN'], flow['RST'], flow['PSH'], flow['ACK'], flow['URG'],
+                flow.get('fwd_header_len', 0), flow.get('bwd_header_len', 0),
+                flow.get('bwd_packets_per_s', 0), flow.get('min_packet_len', 0),
+                flow['flow_bytes_per_s'], flow['flow_packets_per_s']
+            ]
+            
+            # Convert features to tensor and get prediction
+            features_tensor = torch.tensor(features, dtype=torch.float32).reshape(1, -1)
+            with torch.no_grad():
+                output = model(features_tensor)
+                _, prediction = torch.max(output, dim=1)
+                attack_type = vulnarability_mapping[str(prediction.item())]
+
+            # Prepare prediction data
+            prediction_data = {
+                "source_ip": ip_src,
+                "destination_ip": ip_dst,
+                "attack_type": attack_type,
+                "timestamp": time.time()
+            }
+
+            # Broadcast prediction to all connected clients
+            asyncio.create_task(manager.broadcast(prediction_data))
+    
+    try:
+        scapy.sniff(prn=packet_callback, store=0, filter="ip")
+    except Exception as e:
+        print(f"Error occurred during sniffing: {e}")
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await capture_traffic_and_extract_features()
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await manager.disconnect(websocket)
 
 @app.post("/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
@@ -204,6 +387,8 @@ async def upload_csv(file: UploadFile = File(...)):
     
     predictions = process_csv(file)
     return JSONResponse(content={"predictions": predictions})
+
+
 
 @app.get("/")
 async def root():

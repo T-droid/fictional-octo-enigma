@@ -1,0 +1,112 @@
+:root {
+    --btn-pad: .5em;
+}
+
+.container {
+    padding: .8em;
+    display: flex;
+    /* flex-direction: column; */
+    align-items: center;
+    height: 100vh;
+    background-color: #101010;
+    background-image: url('../assets/background2.jpg');
+    background-size: cover;
+    background-position: center;
+}
+
+.text {
+   display: flex;
+   flex-direction: column;
+   line-height: 2em;
+   padding: 2em;
+}
+
+.text h1 {
+    color: #757272;
+    font-size: 3em;
+    font-weight: 700;
+}
+
+.text h1:nth-child(2) {    
+    color: #dbd9d9;    
+}
+
+
+.text p {
+    color: #999797;
+}
+
+.explore_bt {
+    background-color: #222757;
+    color: #fff;
+    border: none;
+    padding: var(--btn-pad);
+    margin-right: 1em;
+}
+
+.explore_bt:hover {
+    background-color: #a0a8ef;
+    color: #fff;
+    transition: .5s;
+}
+
+.contact_bt {
+    background-color: #15183399;
+    color: white;
+    padding: var(--btn-pad);
+    border: solid 1px #fff;
+}
+
+.contact_bt:hover {
+    background-color: #222757;
+    color: #a4a1a1;
+    transition: .5s;
+}
+
+.container2 {
+    background-color: #101010;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    height: 40vh;
+    padding: 3em;
+}
+
+.container2 img {
+    height: 150px;
+    width: 170px;
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #3a3a3a;
+    color: #101010;
+    border-radius: 10px;
+    height: 250px;
+    width: 200px;
+    padding: .5em;
+    cursor: pointer;
+}
+
+.card:hover {
+    background-color: #212020;
+    color: #fff;
+    transition: .5s;
+}
+
+.card:hover img {
+    transform: scale(1.09);
+    transition: .5s;
+}
+
+
+@media screen and (min-width: 1024px) {
+    .container2  {
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 5em;
+    }
+}

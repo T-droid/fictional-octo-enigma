@@ -66,7 +66,7 @@ model_path = os.path.join(os.path.dirname(__file__), "..", "model", "NIDS_Model_
 
 if not os.path.exists(model_path):
     raise FileNotFoundError(f"Model file not found at {model_path}")
-input_dim = 47  
+input_dim = 25
 output_dim = 15  #changed from 2 to 15 classes
 model = NDISModel(input_dim=input_dim, output_dim=output_dim)
 torch.save(model.state_dict(), model_path)
@@ -312,6 +312,7 @@ def safe_statistic(lst, stat_type):
     return 0  # Default to 0 if list is empty
 
 # Function to capture packets and extract features
+# Function to capture packets and extract features
 async def capture_traffic_and_extract_features():
     def packet_callback(packet):
         if packet.haslayer(scapy.TCP):
@@ -358,6 +359,9 @@ async def capture_traffic_and_extract_features():
                 "timestamp": time.time()
             }
 
+            # Print the prediction to the console
+            print(f"Prediction: {prediction_data}")
+
             # Broadcast prediction to all connected clients
             asyncio.create_task(manager.broadcast(prediction_data))
     
@@ -376,6 +380,7 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
+
 
 @app.post("/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
